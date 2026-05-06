@@ -1,123 +1,80 @@
 # Reflection — Lab 20 (Personal Report)
 
-> **Đây là báo cáo cá nhân.** Mỗi học viên chạy lab trên laptop của mình, với spec của mình. Số liệu của bạn không so sánh được với bạn cùng lớp — chỉ so sánh **before vs after trên chính máy bạn**. Grade rubric tính theo độ rõ ràng của setup + tuning của bạn, không phải tốc độ tuyệt đối.
-
 ---
 
-**Họ Tên:** _<Họ Tên>_
-**Cohort:** _<A20-K1 / A20-K2 / ...>_
-**Ngày submit:** _<YYYY-MM-DD>_
+**Họ Tên:** Tran Quang Long - 2A202600304
+**Cohort:** A20-K1
+**Ngày submit:** 2026-05-06
 
 ---
 
 ## 1. Hardware spec (từ `00-setup/detect-hardware.py`)
 
-> Paste output của `python 00-setup/detect-hardware.py` vào đây, hoặc điền thủ công:
+- **OS:** Linux 6.8.0-1044-azure (x86_64)
+- **CPU:** AMD EPYC 9V74 80-Core Processor
+- **Cores:** 2 physical / 2 logical
+- **CPU extensions:** AVX2
+- **RAM:** 7.8 GB
+- **Accelerator:** CPU only (no discrete accelerator)
+- **llama.cpp backend đã chọn:** CPU
+- **Recommended model tier:** TinyLlama-1.1B
 
-- **OS:** _<macOS 14 / Windows 11 / Ubuntu 24.04 / ...>_
-- **CPU:** _<Apple M2 / Intel i7-12700H / AMD Ryzen 7 5800H / ...>_
-- **Cores:** _<physical / logical>_
-- **CPU extensions:** _<AVX2 / AVX-512 / NEON / —>_
-- **RAM:** _<GB>_
-- **Accelerator:** _<NVIDIA RTX 4060 8GB / Apple Metal / AMD ROCm / Vulkan / CPU only>_
-- **llama.cpp backend đã chọn:** _<CUDA / Metal / Vulkan / CPU>_
-- **Recommended model tier:** _<TinyLlama-1.1B / Qwen2.5-1.5B / Llama-3.2-3B / Qwen2.5-7B>_
-
-**Setup story** (≤ 80 chữ): những gì cần thay đổi để lab chạy được trên máy bạn (vd: dùng WSL2, install CUDA Toolkit, fall back sang Vulkan vì ROCm phiên bản kén, tắt antivirus để pip install nhanh hơn, v.v.):
-
-_Answer here._
+**Setup story:** I used GitHub Codespaces to ensure a clean, isolated environment. Since I was running on a virtualized cloud CPU, I focused on optimizing thread allocation and batch sizes for CPU-bound inference rather than GPU offloading.
 
 ---
 
 ## 2. Track 01 — Quickstart numbers (từ `benchmarks/01-quickstart-results.md`)
 
-> Paste bảng từ `benchmarks/01-quickstart-results.md` xuống đây (auto-generated bởi `python 01-llama-cpp-quickstart/benchmark.py`).
-
 | Model | Load (ms) | TTFT P50/P95 (ms) | TPOT P50/P95 (ms) | E2E P50/P95/P99 (ms) | Decode rate (tok/s) |
 |---|--:|--:|--:|--:|--:|
-| (Q4_K_M) | | | | | |
-| (Q2_K)   | | | | | |
+| tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf | 2047 | 443 / 592 | 46.5 / 50.7 | 3289 / 3436 / 3438 | 21.5 |
+| tinyllama-1.1b-chat-v1.0.Q2_K.gguf | 1074 | 722 / 914 | 60.4 / 62.6 | 4435 / 4712 / 4725 | 16.6 |
 
-**Một quan sát** (≤ 50 chữ): Q4_K_M vs Q2_K trên máy bạn — số liệu nói gì? Quality đáng đánh đổi không?
-
-_Answer here._
+**Một quan sát:** Surprisingly, the Q4_K_M model had a higher decode rate than Q2_K. On this specific cloud vCPU, the larger model weights likely aligned better with the processor's AVX2 registers, whereas the heavily compressed Q2_K might have incurred higher dequantization overhead.
 
 ---
 
 ## 3. Track 02 — llama-server load test
 
-> Chạy 2 lần locust ở concurrency 10 và 50, paste tóm tắt bên dưới.
-
 | Concurrency | Total RPS | TTFB P50 (ms) | E2E P95 (ms) | E2E P99 (ms) | Failures |
 |--:|--:|--:|--:|--:|--:|
-| 10 | | | | | |
-| 50 | | | | | |
+| 10 | 0.13 | 14000 | 53000 | 53000 | 0 |
+| 50 | 0.11 | 29000 | 48000 | 48000 | 0 |
 
-**KV-cache observation** (từ `record-metrics.py`): peak `llamacpp:kv_cache_usage_ratio` ở concurrency 50 = _<0.XX>_, nghĩa là …
-
-_Answer here._
+**KV-cache observation:** Peak `llamacpp:kv_cache_usage_ratio` hit 1.0 under 50-user load. This saturation led to significant queueing delays and client disconnects, as the 2048-token context window was fully exhausted across the 4 parallel slots.
 
 ---
 
 ## 4. Track 03 — Milestone integration
 
-- **N16 (Cloud/IaC):** _<piece you connected — k3d cluster / GCP project / docker-compose / "stub: localhost only">_
-- **N17 (Data pipeline):** _<piece — Airflow DAG / batch job / "stub: in-memory dict">_
-- **N18 (Lakehouse):** _<piece — Delta Lake table / Iceberg / "stub: SQLite">_
-- **N19 (Vector + Feature Store):** _<piece — Qdrant index / Feast / "stub: TOY_DOCS">_
+- **N16 (Cloud/IaC):** stub: localhost only
+- **N17 (Data pipeline):** stub: in-memory dict
+- **N18 (Lakehouse):** stub: SQLite
+- **N19 (Vector + Feature Store):** stub: TOY_DOCS
 
-**Nơi tốn nhiều ms nhất** trong pipeline (đo bằng `time.perf_counter` trong `pipeline.py`):
+**Nơi tốn nhiều ms nhất:**
+- retrieve: 0.0 ms
+- llama-server: 8472.0 ms
 
-- embed: _<ms>_
-- retrieve: _<ms>_
-- llama-server: _<ms>_
-
-**Reflection** (≤ 60 chữ): bottleneck nằm ở đâu? Có khớp với kỳ vọng không?
-
-_Answer here._
+**Reflection:** The bottleneck is entirely the CPU-bound LLM inference. In a production scenario, retrieval time would be negligible compared to the seconds required for token generation on this hardware.
 
 ---
 
 ## 5. Bonus — The single change that mattered most
 
-> **Most important section.** Pick **một** thay đổi từ bonus track (build flag, thread sweep, quant pick, GPU offload, KV-cache quantization, speculative decoding, bất cứ challenge nào trong `BONUS-llama-cpp-optimization/CHALLENGES.md`) đã tạo ra speedup lớn nhất trên máy bạn.
+**Change:** Reducing `LAB_N_THREADS` from 2 down to 1.
 
-**Change:** _<vd: rebuild llama.cpp với `-DGGML_NATIVE=ON -DGGML_BLAS=ON`; vd: hạ `-t` từ 12 xuống 6; vd: bật Metal trên M2>_
+**Before vs after:**
 
-**Before vs after** (paste 2-3 dòng từ sweep output):
+before (2 threads): 21.5 tokens/s
+after (1 thread): 23.0 tokens/s
+speedup: ~1.07x
 
-```
-before: <số liệu>
-after:  <số liệu>
-speedup: ~<X.Y>×
-```
-
-**Tại sao nó work** (1–2 đoạn ngắn — đây là phần grader đọc kỹ nhất):
-
-_Giải thích như đang nói với một bạn cùng lớp đang ngồi cạnh. Tránh "vibes-based" reasoning — bám vào mô hình mental của hardware (memory bandwidth? compute? cache?). Nếu kết quả khác kỳ vọng từ deck, nói rõ — đó là phần grader thưởng điểm._
+**Tại sao nó work:** 
+On this specific 2-vCPU Azure instance, the overhead of the OS trying to synchronize the TinyLlama-1.1B weights across two virtual cores was greater than the parallel processing gain. By forcing the work onto a single thread, I eliminated context switching and cache-coherency overhead, leading to a measurable 7% improvement in throughput. This demonstrates that "more threads" is not a universal fix for small models on limited silicon.
 
 ---
 
 ## 6. (Optional) Điều ngạc nhiên nhất
 
-_(1–2 câu — không bắt buộc, nhưng người grader đọc tất cả)_
-
-_Answer here._
-
----
-
-## 7. Self-graded checklist
-
-- [ ] `hardware.json` đã commit
-- [ ] `models/active.json` đã commit (hoặc paste path snapshot vào section 1)
-- [ ] `benchmarks/01-quickstart-results.md` đã commit
-- [ ] `benchmarks/02-server-results.md` (hoặc CSV từ `record-metrics.py`) đã commit
-- [ ] `benchmarks/bonus-*.md` đã commit (ít nhất 1 sweep)
-- [ ] Ít nhất 6 screenshots trong `submission/screenshots/` (xem `submission/screenshots/README.md`)
-- [ ] `make verify` exit 0 (chạy ngay trước khi push)
-- [ ] Repo trên GitHub ở chế độ **public**
-- [ ] Đã paste public repo URL vào VinUni LMS
-
----
-
-**Quan trọng:** repo phải **public** đến khi điểm được công bố. Nếu private, grader không xem được → 0 điểm.
+It was shocking to see how quickly latency exploded from 3 seconds to over 40 seconds just by adding 10 concurrent users. It really emphasized the importance of continuous batching and PagedAttention in production systems.
